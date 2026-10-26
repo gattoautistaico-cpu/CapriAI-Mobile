@@ -1,0 +1,9 @@
+Capri AI — Android
+Copyright 2026 gattoautistaico-cpu
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The names "Cyber AI" and "Capri AI", and the related logos, are not licensed
+under Apache-2.0: section 6 of the license excludes trademarks.
+
+Third-party components keep their own licenses (Tauri, React, Ollama,
+whisper.cpp, Piper, etc.).

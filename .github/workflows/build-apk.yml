@@ -6,6 +6,9 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -26,8 +29,14 @@ jobs:
       - name: Build
         run: |
           chmod +x build-apk.sh tc/*.sh
-          VN="${GITHUB_REF_NAME#v}"; [[ "$GITHUB_REF" == refs/tags/* ]] || VN="0.3.${GITHUB_RUN_NUMBER}"
-          ./build-apk.sh "$GITHUB_RUN_NUMBER" "$VN"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VN="${GITHUB_REF_NAME#v}"
+            IFS=. read -r MA MI PA <<< "$VN"
+            VC=$(( ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))
+          else
+            VN="dev.${GITHUB_RUN_NUMBER}"; VC=1
+          fi
+          ./build-apk.sh "$VC" "$VN"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -38,4 +47,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Capri AI ${{ github.ref_name }}
+          body: |
+            APK Android firmato. Installa CapriAI.apk sul telefono (consenti "origini sconosciute").
+            Signed Android APK. Install CapriAI.apk on your phone (allow "unknown sources").
           files: app/*.apk

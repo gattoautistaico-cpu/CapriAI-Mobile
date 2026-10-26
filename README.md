@@ -17,7 +17,7 @@ tc/                          build senza Android SDK: mkapk.py (manifest binario
 Servono soltanto **git** e **JDK 17 o successivo**: niente Android SDK e niente Gradle.
 ```bash
 ./build-apk.sh            # -> app/CapriAI.apk (firmato)
-./build-apk.sh 4 0.4.0    # versionCode e versionName personalizzati
+./build-apk.sh 400 0.4.0  # versionCode e versionName personalizzati
 ```
 Su Windows lancialo da Git Bash.
 
@@ -33,3 +33,16 @@ Il keystore usa alias `app` e password `android`. **Non** caricare mai il file `
 ## Limiti
 - minSdk 24 (Android 7), targetSdk 29, firma v1.
 - La lettura dello schermo richiede di attivare il servizio di accessibilità. Su Android 13 e successivi bisogna prima consentire le "impostazioni con restrizioni" dalle Info app.
+
+## Lingua / Language
+L'app è in italiano e in inglese. Al primo avvio la lingua segue quella del telefono. Per cambiarla:
+- **Impostazioni → AI → Lingua · Language**, oppure
+- il pulsante **IT/EN ⇄** nella barra delle schede.
+
+Cambiano anche la lingua delle risposte, del riconoscimento vocale e della voce.
+
+The app is available in Italian and English. Switch it in **Settings → AI → Lingua · Language** or with the **IT/EN ⇄** button in the tab bar.
+
+## Licenza
+Apache License 2.0: vedi [LICENSE](LICENSE) e [NOTICE](NOTICE). © 2026 gattoautistaico-cpu.
+I nomi "Capri AI" e "Cyber AI" non sono concessi in licenza (Apache-2.0, sezione 6).

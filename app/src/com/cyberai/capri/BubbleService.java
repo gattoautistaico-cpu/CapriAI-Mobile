@@ -59,6 +59,8 @@ public class BubbleService extends Service {
     // ------------------------------------------------------------ assistente passivo
     static volatile boolean passiveWanted = false;
     static String wakeWords = "hey capri";
+    static boolean en = false;
+    static String L(String it, String eng) { return en ? eng : it; }
     static String greeting = "";
     static volatile boolean speaking = false;
     static volatile boolean muteBeep = true;
@@ -309,7 +311,7 @@ public class BubbleService extends Service {
         mode = "command";
         localLabel = sayName.toUpperCase() + " // LISTENING";
         sayUser = "";
-        sayText = "ti ascolto…";
+        sayText = L("ti ascolto…", "listening…");
         shown = sayText.length();
         sayAt = System.currentTimeMillis();
         relayout();
@@ -342,10 +344,10 @@ public class BubbleService extends Service {
         } else if ("error".equals(ev)) {
             localLabel = null;
             String msg;
-            if ("7".equals(v) || "6".equals(v) || "timeout".equals(v)) msg = "non ho sentito niente, choom. tocca e riprova.";
-            else if ("unavailable".equals(v)) msg = "riconoscimento vocale non disponibile: installa o aggiorna l'app Google.";
-            else if ("9".equals(v)) msg = "mi manca il permesso del microfono: apri l'app.";
-            else msg = "errore microfono (" + v + "). tocca e riprova.";
+            if ("7".equals(v) || "6".equals(v) || "timeout".equals(v)) msg = L("non ho sentito niente, choom. tocca e riprova.", "didn't hear a thing, choom. tap and try again.");
+            else if ("unavailable".equals(v)) msg = L("riconoscimento vocale non disponibile: installa o aggiorna l'app Google.", "speech recognition unavailable: install or update the Google app.");
+            else if ("9".equals(v)) msg = L("mi manca il permesso del microfono: apri l'app.", "microphone permission missing: open the app.");
+            else msg = L("errore microfono (", "microphone error (") + v + L("). tocca e riprova.", "). tap and try again.");
             sayUser = "";
             sayText = msg;
             shown = 0;
@@ -379,7 +381,7 @@ public class BubbleService extends Service {
             if (fatal) {
                 passive = false;
                 sayUser = "";
-                sayText = "modalità passiva sospesa: riconoscimento vocale non disponibile.";
+                sayText = L("modalità passiva sospesa: riconoscimento vocale non disponibile.", "passive mode paused: speech recognition unavailable.");
                 shown = 0;
                 sayAt = System.currentTimeMillis();
                 relayout();
@@ -400,7 +402,7 @@ public class BubbleService extends Service {
             sendToBrain(cmd);
             return;
         }
-        String g = greeting == null || greeting.isEmpty() ? "Dimmi, choom. Di cosa hai bisogno?" : greeting;
+        String g = greeting == null || greeting.isEmpty() ? L("Dimmi, choom. Di cosa hai bisogno?", "Talk to me, choom. What do you need?") : greeting;
         sayUser = "";
         sayText = g;
         shown = 0;
@@ -428,7 +430,7 @@ public class BubbleService extends Service {
             try {
                 startActivity(i);
             } catch (Throwable t) {
-                sayText = "non riesco a svegliare l'app: aprila una volta.";
+                sayText = L("non riesco a svegliare l'app: aprila una volta.", "can't wake the app: open it once.");
                 shown = 0;
                 relayout();
             }
@@ -502,7 +504,7 @@ public class BubbleService extends Service {
         Intent i = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, i, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return b.setContentTitle("Capri online")
-                .setContentText(passiveWanted ? "In ascolto della parola di attivazione" : "Tocca = parla · doppio tocco = apri · tieni premuto = chiudi")
+                .setContentText(passiveWanted ? L("In ascolto della parola di attivazione", "Listening for the wake word") : L("Tocca = parla · doppio tocco = apri · tieni premuto = chiudi", "Tap = talk · double tap = open · long press = close"))
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentIntent(pi)
                 .setOngoing(true)

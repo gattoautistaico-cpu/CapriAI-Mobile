@@ -19,7 +19,8 @@ const DEF = {
   personality: 'capri',
   custom: '',
   userName: '',
-  lang: 'it-IT',
+  lang: '',
+  uiLang: '',
   order: ['local', 'gemini', 'extra', 'openrouter'],
   // altri provider gratuiti OpenAI-compatibili (base URL e modelli modificabili)
   extra: [
@@ -52,6 +53,8 @@ function load() {
     const savedX = Array.isArray(s.extra) ? s.extra : [];
     o.extra = DEF.extra.map((d) => ({ ...d, ...(savedX.find((x) => x.id === d.id) || {}) }));
     savedX.filter((x) => !DEF.extra.some((d) => d.id === x.id)).forEach((x) => o.extra.push(x));
+    if (!o.uiLang) o.uiLang = I18N.detect();
+    if (!o.lang) o.lang = o.uiLang === 'en' ? 'en-US' : 'it-IT';
     if (!o.order.includes('extra')) o.order.splice(Math.max(0, o.order.indexOf('openrouter')), 0, 'extra');
     return o;
   } catch (e) {
@@ -147,6 +150,12 @@ function toolsPrompt() {
   return t.join('\n');
 }
 
+function langLine() {
+  return I18N.lang === 'en'
+    ? 'Always reply in English (the user set the app to English), unless the user clearly writes in another language.'
+    : "Rispondi in italiano, a meno che l'utente non scriva chiaramente in un'altra lingua.";
+}
+
 function systemPrompt() {
   const per = PERS[cfg.personality] || PERS.capri;
   const persona = cfg.personality === 'custom' ? cfg.custom : (per.p + '\n' + cfg.custom).trim();
@@ -155,7 +164,7 @@ function systemPrompt() {
     : '';
   return [
     `Il tuo nome è ${cfg.name}.`,
-    "Sei un'IA companion che vive nel telefono dell'utente, in un mondo cyberpunk. Rispondi nella lingua dell'utente (default italiano). Risposte brevi, 1-3 frasi, da leggere ad alta voce. Niente markdown, elenchi o emoji.",
+    "Sei un'IA companion che vive nel telefono dell'utente, in un mondo cyberpunk. " + langLine() + " Risposte brevi, 1-3 frasi, da leggere ad alta voce. Niente markdown, elenchi o emoji.",
     'Inizia ogni risposta con un tag mood tra: [mood:idle] [mood:happy] [mood:angry] [mood:sad] [mood:surprised] [mood:love] [mood:smug] [mood:think].',
     "Quando l'utente dice un fatto stabile su di sé aggiungi alla fine <ricorda>fatto</ricorda>. Mai dati sensibili (password, documenti, carte).",
     persona,
@@ -510,7 +519,7 @@ function deliver(raw) {
     if (!ex.np) ex.np = r.acts.map((a) => a.kind + ': ' + (a.to ? a.to + ' · ' : '') + a.v).join(' · ');
   }
   // risposta fatta solo di tag (es. solo <play>): genera una frase minima
-  if (!r.text) r.text = r.play ? `Metto su ${r.play}.` : r.acts.length ? 'Fatto, choom.' : '…';
+  if (!r.text) r.text = r.play ? `${T('Metto su')} ${r.play}.` : r.acts.length ? T('Fatto, choom.') : '…';
   history.push({ role: 'assistant', content: r.text });
   while (history.length > 14) history.shift();
   ex.reply = r.text;
@@ -603,7 +612,7 @@ function ask(text, image, src) {
     } catch (e) {
       ST.thinking = false;
       log('err', 'brain', e && e.message ? e.message : e);
-      ex.reply = OFFLINE_LINES[(Math.random() * OFFLINE_LINES.length) | 0];
+      ex.reply = T(OFFLINE_LINES[(Math.random() * OFFLINE_LINES.length) | 0]);
       ex.mood = 'sad';
       ex.ts = now();
       onReply();
@@ -699,7 +708,7 @@ async function runActions(acts) {
         if (!cfg.tools.calls) continue;
         const c = await pickContact(a.v);
         const wa = a.kind === 'wacall';
-        confirmCall((wa ? 'Chiamata WhatsApp a ' : 'Chiamo ') + c.name + (c.number ? ' · ' + c.number : ''), () => {
+        confirmCall((wa ? T('Chiamata WhatsApp a') + ' ' : T('Chiamo') + ' ') + c.name + (c.number ? ' · ' + c.number : ''), () => {
           const how = wa ? nat(() => N.waCall(String(c.waVoiceId || 0), c.number || ''), '') : nat(() => N.call(c.number), '');
           log(how ? 'ok' : 'err', 'azioni', (wa ? 'WhatsApp ' : 'chiamata ') + c.name + ' → ' + (how || 'fallita'));
           if (how === 'dial') nat(() => N.toast('Premi il tasto verde: manca il permesso per chiamare direttamente'));
@@ -871,7 +880,7 @@ window.__stt = (ev, v) => {
   refresh();
 };
 function showSttError(code) {
-  const msg = STT_ERR[code] || 'errore microfono ' + code;
+  const msg = STT_ERR[code] ? T(STT_ERR[code]) : T('errore audio del microfono') + ' ' + code;
   log('warn', 'stt', msg + ' (' + code + ')');
   // l'errore compare nel terminale, così si capisce perché non ha risposto
   ex.reply = msg + '.';
@@ -1340,13 +1349,37 @@ function closeSettings() {
 }
 window.openSettings = openSettings;
 
+/** Cambia la lingua dell'interfaccia; la lingua di ascolto/voce la segue. */
+function setUiLang(l) {
+  const wasEn = cfg.uiLang === 'en';
+  cfg.uiLang = l === 'en' ? 'en' : 'it';
+  if (/^(it|en)/.test(cfg.lang)) cfg.lang = cfg.uiLang === 'en' ? (wasEn ? cfg.lang : 'en-US') : 'it-IT';
+  cfg.tts.voice = '';
+  save();
+  // tornando all'italiano serve ridisegnare tutto da zero: il DOM tradotto non si "ritraduce"
+  if (!wasEn || cfg.uiLang === 'en') {
+    I18N.set(cfg.uiLang);
+    try { if (N) { N.setUi(cfg.uiLang); N.setLang(cfg.lang); } } catch (e) { /* niente */ }
+    I18N.walk(document.body);
+    if (curTab) { renderTabs(); renderTab(); }
+    refresh();
+  } else {
+    try { localStorage.setItem('capri.cfg', JSON.stringify(cfg)); } catch (e) { /* niente */ }
+    location.reload();
+  }
+  if (cfg.passive.on) applyPassive(false);
+}
+window.setUiLang = setUiLang;
+
 function renderTabs() {
   $('tabs').innerHTML =
     TABS.map(([id, l]) => `<button type="button" data-t="${id}" class="${id === curTab ? 'on' : ''}">${l}</button>`).join('') +
+    `<button type="button" class="lang" data-t="__lang" data-noi18n aria-label="Lingua / Language">${cfg.uiLang === 'en' ? 'EN' : 'IT'} ⇄</button>` +
     '<button type="button" class="x" data-t="__close">CHIUDI</button>';
   $('tabs').querySelectorAll('button').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.t === '__close') return closeSettings();
+      if (b.dataset.t === '__lang') return setUiLang(cfg.uiLang === 'en' ? 'it' : 'en');
       curTab = b.dataset.t;
       renderTabs();
       renderTab();
@@ -1395,6 +1428,7 @@ function renderTab() {
   const P = $('panel');
   let h = '';
   if (curTab === 'ai') {
+    h += `<h3>00 // LINGUA · LANGUAGE</h3><div class="row" data-noi18n><button type="button" class="btn ${cfg.uiLang === 'it' ? 'p' : ''}" data-ui="it">Italiano</button><button type="button" class="btn ${cfg.uiLang === 'en' ? 'p' : ''}" data-ui="en">English</button></div>`;
     h += `<h3>01 // ORDINE PROVIDER</h3>`;
     h += cfg.order.map((p, i) => `<div class="item"><span class="grow">${i + 1}. ${{ local: 'PC in LAN (Ollama / LM Studio)', gemini: 'Gemini multi-key', extra: 'Altri provider free (Groq, Cerebras…)', openrouter: 'OpenRouter :free' }[p]}</span><button type="button" data-mv="${i}" data-d="-1" aria-label="Su">↑</button><button type="button" data-mv="${i}" data-d="1" aria-label="Giù">↓</button></div>`).join('');
     h += `<h3>02 // PC IN LAN</h3>` + tog('Usa il PC come cervello', 'local.enabled');
@@ -1565,13 +1599,14 @@ function bindTab(P) {
   on('[data-pers]', (el) => { cfg.personality = el.dataset.pers; save(); renderTab(); });
   on('[data-imp]', (el) => { spriteTarget = el.dataset.imp; $('pickSprite').click(); });
   on('[data-dels]', (el) => delSprite(+el.dataset.dels).then(renderTab));
-  on('#testVoice', () => speak(`Ciao, sono ${cfg.name}. Sistemi neurali online, choom.`));
+  on('#testVoice', () => speak(`${T('Ciao, sono')} ${cfg.name}. ${T('Sistemi neurali online, choom.')}`));
   on('#mPlay', () => { const q = $('mq').value.trim(); if (q) { music('play', q); ex.np = q; } });
   on('[data-mc]', (el) => music(el.dataset.mc));
   on('#bOn', () => N ? N.bubble(true) : log('warn', 'bolla', 'solo nell\'app'));
   on('#bOff', () => N && N.bubble(false));
   on('#addF', () => { addFact($('nf').value); renderTab(); });
-  on('#newConv', () => { history.length = 0; ex.user = ex.np = ex.reply = ''; refresh(); N && N.toast('Conversazione azzerata'); });
+  on('[data-ui]', (el) => setUiLang(el.dataset.ui));
+  on('#newConv', () => { history.length = 0; ex.user = ex.np = ex.reply = ''; refresh(); N && N.toast(T('Conversazione azzerata')); });
   on('#clrF', () => { cfg.facts = []; save(); renderTab(); });
   on('[data-delf]', (el) => { cfg.facts.splice(+el.dataset.delf, 1); save(); renderTab(); });
 }
@@ -1581,7 +1616,7 @@ $('pickSprite').onchange = async (e) => {
   if (files.length && spriteTarget) await addSprites(spriteTarget, files);
   renderTab();
 };
-window.__bubble = (ok) => N && N.toast(ok ? 'Bolla attiva' : 'Permesso negato');
+window.__bubble = (ok) => N && N.toast(T(ok ? 'Bolla attiva' : 'Permesso negato'));
 window.__perms = () => {
   if (curTab === 'strumenti') renderTab();
 };
@@ -1589,9 +1624,9 @@ function applyPassive(showToast) {
   try {
     if (!N) return;
     N.passiveMute(!!cfg.passive.mute);
-    N.passive(!!cfg.passive.on, cfg.passive.words || 'hey capri', cfg.passive.greeting || '');
+    N.passive(!!cfg.passive.on, cfg.passive.words || 'hey capri', cfg.passive.greeting || T('Dimmi, choom. Di cosa hai bisogno?'));
     if (cfg.passive.on && !perms().mic) N.requestPerms('android.permission.RECORD_AUDIO');
-    if (showToast) N.toast(cfg.passive.on ? 'Hey ' + cfg.name + ': in ascolto' : 'Modalità passiva spenta');
+    if (showToast) N.toast(cfg.passive.on ? 'Hey ' + cfg.name + T(': in ascolto') : T('Modalità passiva spenta'));
   } catch (e) {
     log('err', 'passivo', e.message);
   }
@@ -1600,6 +1635,10 @@ function applyPassive(showToast) {
 // ================================================================ avvio
 
 (async function boot() {
+  I18N.set(cfg.uiLang);
+  I18N.observe(document.body);
+  I18N.walk(document.body);
+  try { if (N && N.setUi) N.setUi(cfg.uiLang); } catch (e) { /* niente */ }
   try { await loadSprites(); } catch (e) { log('err', 'sprite', e.message); }
   setProv('offline', '');
   refresh();

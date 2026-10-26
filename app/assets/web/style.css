@@ -139,3 +139,5 @@ p.note{font-size:14px;color:var(--muted);margin:0 0 10px}
 .pv{border:1px solid var(--edge);background:rgba(18,16,26,.7);padding:10px;margin-bottom:10px}
 .pv .h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
 .pv .h b{font-family:var(--disp);font-size:12px;letter-spacing:2px;color:var(--yellow);font-style:italic}
+
+#tabs .lang{color:var(--cyan);border-color:var(--cyan)}

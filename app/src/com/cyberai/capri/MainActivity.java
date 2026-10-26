@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(i);
         } catch (Exception e) {
-            toast("Nessuna app per: " + url);
+            toast((BubbleService.en ? "No app for: " : "Nessuna app per: ") + url);
         }
     }
 
@@ -407,6 +407,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void setUi(String ui) {
+            BubbleService.en = ui != null && ui.startsWith("en");
+        }
+
+        @JavascriptInterface
         public void listen(final String lang) {
             setLang(lang);
             ui.post(new Runnable() { public void run() {
@@ -568,7 +573,7 @@ public class MainActivity extends Activity {
                     Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(i);
-                } catch (Throwable t) { MainActivity.this.toast("Apri Impostazioni > Accessibilità > Capri AI"); }
+                } catch (Throwable t) { MainActivity.this.toast((BubbleService.en ? "Open Settings > Accessibility > Capri AI" : "Apri Impostazioni > Accessibilità > Capri AI")); }
             }});
         }
 

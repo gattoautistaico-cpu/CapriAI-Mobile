@@ -2,7 +2,7 @@
 # Compila e firma CapriAI.apk. Uso: ./build-apk.sh [versionCode] [versionName]
 set -euo pipefail
 cd "$(dirname "$0")"
-VC="${1:-3}"; VN="${2:-0.3.0}"
+VC="${1:-400}"; VN="${2:-0.4.0}"
 ./tc/setup-toolchain.sh
 ./tc/build.sh app com.cyberai.capri "Capri AI" \
   --perm android.permission.INTERNET --perm android.permission.ACCESS_NETWORK_STATE \

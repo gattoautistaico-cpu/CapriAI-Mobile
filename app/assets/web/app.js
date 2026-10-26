@@ -32,10 +32,10 @@ const DEF = {
     { id: 'hf', name: 'Hugging Face', enabled: true, base: 'https://router.huggingface.co/v1', key: '', models: 'meta-llama/Llama-3.3-70B-Instruct, Qwen/Qwen2.5-72B-Instruct', vision: '', signup: 'huggingface.co/settings/tokens' },
     { id: 'cloudflare', name: 'Cloudflare Workers AI', enabled: true, base: 'https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1', key: '', models: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', vision: '', signup: 'dash.cloudflare.com → AI → Workers AI (sostituisci ACCOUNT_ID)' },
   ],
-  tools: { on: true, web: true, screen: true, calls: true, apps: true },
+  tools: { on: true, web: true, screen: true, calls: true, apps: true, waAuto: true },
   passive: { on: false, words: 'hey capri, ehi capri', greeting: '', mute: true },
   local: { enabled: true, baseUrl: 'http://192.168.1.10:11434/v1', model: 'qwen2.5:7b', vision: 'gemma3:4b', timeout: 60 },
-  gemini: { enabled: true, keys: [], models: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash'], cooldown: 60 },
+  gemini: { enabled: true, keys: [], models: ['gemini-3.5-flash'], cooldown: 60 },
   openrouter: { enabled: true, key: '', preferred: '' },
   tts: { on: true, pitch: 1.25, rate: 1.05, voice: '' },
   music: { on: true, provider: 'auto' },
@@ -53,8 +53,15 @@ function load() {
     const savedX = Array.isArray(s.extra) ? s.extra : [];
     o.extra = DEF.extra.map((d) => ({ ...d, ...(savedX.find((x) => x.id === d.id) || {}) }));
     savedX.filter((x) => !DEF.extra.some((d) => d.id === x.id)).forEach((x) => o.extra.push(x));
+    // v0.5: modello Gemini predefinito unico (sostituisce la vecchia lista di default)
+    if (!o.gemini.v5) {
+      const old = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-2.5-flash'];
+      const m = o.gemini.models || [];
+      if (!m.length || (m.length === old.length && m.every((x, i) => x === old[i]))) o.gemini.models = ['gemini-3.5-flash'];
+      o.gemini.v5 = true;
+    }
     if (!o.uiLang) o.uiLang = I18N.detect();
-    if (!o.lang) o.lang = o.uiLang === 'en' ? 'en-US' : 'it-IT';
+    if (!o.lang) o.lang = { it: 'it-IT', en: 'en-US', pl: 'pl-PL' }[o.uiLang] || 'it-IT';
     if (!o.order.includes('extra')) o.order.splice(Math.max(0, o.order.indexOf('openrouter')), 0, 'extra');
     return o;
   } catch (e) {
@@ -145,15 +152,15 @@ function toolsPrompt() {
   t.push('<youtube>ricerca</youtube> cerca su YouTube. <google>ricerca</google> apre una ricerca Google.');
   if (cfg.tools.web) t.push('<web>ricerca</web> se ti serve un\'informazione aggiornata o che non sai: ricevi i risultati e poi rispondi tu.');
   if (cfg.tools.screen) t.push('<screen/> se l\'utente chiede di qualcosa che ha sullo schermo e non ne hai già il contenuto: ricevi il testo (e se possibile un\'immagine) e poi rispondi.');
-  if (cfg.tools.calls) t.push('<call>nome o numero</call> chiamata normale. <wacall>nome</wacall> chiamata WhatsApp. <wamsg to="nome">testo</wamsg> apre WhatsApp con il messaggio pronto.');
+  if (cfg.tools.calls) t.push('<call>nome o numero</call> chiamata normale. <wacall>nome</wacall> chiamata WhatsApp. <wamsg to="nome del contatto">testo esatto del messaggio</wamsg> invia un messaggio WhatsApp (scrivi il testo come lo scriverebbe l\'utente, in prima persona, senza virgolette).');
   t.push('Annuncia l\'azione in carattere, in una frase.');
   return t.join('\n');
 }
 
 function langLine() {
-  return I18N.lang === 'en'
-    ? 'Always reply in English (the user set the app to English), unless the user clearly writes in another language.'
-    : "Rispondi in italiano, a meno che l'utente non scriva chiaramente in un'altra lingua.";
+  if (I18N.lang === 'en') return 'Always reply in English (the user set the app to English), unless the user clearly writes in another language.';
+  if (I18N.lang === 'pl') return 'Zawsze odpowiadaj po polsku (użytkownik ustawił aplikację na język polski), chyba że użytkownik wyraźnie pisze w innym języku. Always reply in Polish.';
+  return "Rispondi in italiano, a meno che l'utente non scriva chiaramente in un'altra lingua.";
 }
 
 function systemPrompt() {
@@ -529,6 +536,7 @@ function deliver(raw) {
   clearTimeout(moodT);
   moodT = setTimeout(() => { transientMood = null; refresh(); }, 12000);
   onReply();
+  try { if (N && N.bubbleMood) N.bubbleMood(r.mood || 'happy'); } catch (e) { /* bolla spenta */ }
   bubbleSay(r.text);
   speak(r.text);
 }
@@ -653,10 +661,10 @@ async function pickContact(name) {
   if (/^[+0-9][0-9 ()\-]{5,}$/.test(name)) return { name, number: name.replace(/[^0-9+]/g, ''), waVoiceId: 0 };
   if (!perms().contacts) {
     nat(() => N.requestPerms('android.permission.READ_CONTACTS,android.permission.CALL_PHONE'));
-    throw new Error('mi serve il permesso per leggere i contatti: concedilo e richiedimelo');
+    throw new Error(T('mi serve il permesso per leggere i contatti: concedilo e richiedimelo'));
   }
   const list = safeJson(nat(() => N.contacts(name), '[]')) || [];
-  if (!list.length) throw new Error('non trovo "' + name + '" in rubrica');
+  if (!list.length) throw new Error(T('non trovo in rubrica:') + ' ' + name);
   return list[0];
 }
 
@@ -699,7 +707,7 @@ async function runActions(acts) {
       if (a.kind === 'open') {
         const got = nat(() => N.openApp(a.v), '');
         log(got ? 'ok' : 'warn', 'azioni', got ? 'aperta ' + got : 'app non trovata: ' + a.v);
-        if (!got) bubbleSay('Non trovo un\'app che si chiama ' + a.v + '.');
+        if (!got) bubbleSay(T('Non trovo un\'app che si chiama') + ' ' + a.v + '.');
       } else if (a.kind === 'youtube') {
         log('ok', 'azioni', 'YouTube: ' + a.v + ' via ' + nat(() => N.youtube(a.v), '-'));
       } else if (a.kind === 'google') {
@@ -711,14 +719,26 @@ async function runActions(acts) {
         confirmCall((wa ? T('Chiamata WhatsApp a') + ' ' : T('Chiamo') + ' ') + c.name + (c.number ? ' · ' + c.number : ''), () => {
           const how = wa ? nat(() => N.waCall(String(c.waVoiceId || 0), c.number || ''), '') : nat(() => N.call(c.number), '');
           log(how ? 'ok' : 'err', 'azioni', (wa ? 'WhatsApp ' : 'chiamata ') + c.name + ' → ' + (how || 'fallita'));
-          if (how === 'dial') nat(() => N.toast('Premi il tasto verde: manca il permesso per chiamare direttamente'));
-          if (how === 'wa_chat') nat(() => N.toast('Chiamata WhatsApp non disponibile per questo contatto: apro la chat'));
+          if (how === 'dial') nat(() => N.toast(T('Premi il tasto verde: manca il permesso per chiamare direttamente')));
+          if (how === 'wa_chat') nat(() => N.toast(T('Chiamata WhatsApp non disponibile per questo contatto: apro la chat')));
         }, fromBubble);
       } else if (a.kind === 'wamsg') {
         if (!cfg.tools.calls) continue;
-        const c = await pickContact(a.to || a.v);
-        nat(() => N.waChat(c.number || '', a.to ? a.v : ''));
-        log('ok', 'azioni', 'WhatsApp a ' + c.name);
+        // <wamsg to="Marco">testo</wamsg>, ma anche <wamsg>Marco: testo</wamsg>
+        let to = a.to, text = a.v;
+        if (!to) {
+          const m = /^([^:]{2,40}):\s*([\s\S]+)$/.exec(a.v);
+          if (m) { to = m[1].trim(); text = m[2].trim(); } else { to = a.v; text = ''; }
+        }
+        const c = await pickContact(to);
+        if (!c.number) throw new Error(T('nessun numero per') + ' ' + c.name);
+        const auto = !!cfg.tools.waAuto && !!text;
+        confirmCall(T('WhatsApp a') + ' ' + c.name + (text ? ': “' + text.slice(0, 60) + '”' : ''), () => {
+          const how = nat(() => (N.waSend ? N.waSend(c.number, text, auto) : N.waChat(c.number, text)), '');
+          log(how ? 'ok' : 'err', 'azioni', 'WhatsApp ' + c.name + ' → ' + (how || 'fallito'));
+          if (auto && how !== 'sent' && how) nat(() => N.toast(T('Premi Invia: attiva la lettura schermo per l’invio automatico')));
+          if (!how) bubbleSay(T('WhatsApp non risponde, choom.'));
+        }, fromBubble);
       }
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
@@ -731,7 +751,7 @@ async function runActions(acts) {
 }
 
 // ---------- lettura schermo
-const SCREEN_RE = /\b(schermo|schermata|sto (guardando|leggendo|vedendo)|cosa (c'è|vedo)|questa (pagina|chat|app|foto|immagine|mail|email|notizia)|questo (articolo|messaggio|post|video|testo)|leggi(mi)?|riassumi(mi)?|traducimi|on (my )?screen|what am i looking at)\b/i;
+const SCREEN_RE = /\b(schermo|schermata|sto (guardando|leggendo|vedendo)|cosa (c'è|vedo)|questa (pagina|chat|app|foto|immagine|mail|email|notizia)|questo (articolo|messaggio|post|video|testo)|leggi(mi)?|riassumi(mi)?|traducimi|on (my )?screen|what am i looking at|this (page|message|error|window)|read (this|it)|ekran\w*|przeczytaj|streść|co (tu|to) jest napisane|ta (strona|wiadomość))\b/i;
 
 let shotSeq = 0;
 const shotWait = new Map();
@@ -966,6 +986,34 @@ async function loadSprites() {
   all.sort((a, b) => a.order - b.order).forEach((s) => {
     (sprites[s.state] = sprites[s.state] || []).push({ id: s.id, url: URL.createObjectURL(s.blob), video: /^video\//.test(s.blob.type) });
   });
+  // GIF predefinite: Happy e Talking (sostituite da quelle importate)
+  for (const st of DEFAULT_SPRITES) if (!has(st)) sprites[st] = [{ id: 'def-' + st, url: 'default/' + st + '.gif', video: false, def: true }];
+  syncBubbleSprites(all).catch((e) => log('err', 'sprite', 'bolla: ' + e.message));
+}
+
+const DEFAULT_SPRITES = ['happy', 'talk'];
+
+/** Copia gli sprite importati nei file dell'app, così la bolla li mostra nel popup (i video restano solo nell'app). */
+async function syncBubbleSprites(all) {
+  if (!N || !N.spriteReset) return;
+  const sig = all.map((s) => s.id + ':' + s.state).join(',');
+  let old = '';
+  try { old = localStorage.getItem('capri.spriteSig') || ''; } catch (e) { /* niente */ }
+  if (sig === old) return;
+  N.spriteReset();
+  const idx = {};
+  for (const s of all.sort((a, b) => a.order - b.order)) {
+    if (/^video\//.test(s.blob.type)) continue;
+    const ext = (s.blob.type.split('/')[1] || 'png').replace(/[^a-z0-9]/g, '');
+    const b64 = await new Promise((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1] || '');
+      fr.onerror = () => res('');
+      fr.readAsDataURL(s.blob);
+    });
+    if (b64) N.spritePut(s.state, (idx[s.state] = (idx[s.state] || 0) + 1), ext, b64);
+  }
+  try { localStorage.setItem('capri.spriteSig', sig); } catch (e) { /* niente */ }
 }
 async function addSprites(state, files) {
   for (const f of files) {
@@ -980,6 +1028,7 @@ async function addSprites(state, files) {
   refresh();
 }
 async function delSprite(id) {
+  if (typeof id === 'string' && id.startsWith('def-')) return;
   await new Promise((res) => {
     const r = tx('readwrite').delete(id);
     r.onsuccess = res;
@@ -1020,6 +1069,7 @@ function spriteState() {
   if (transientMood && has(transientMood)) return transientMood;
   if (blinking && has('blink')) return 'blink';
   if (has('idle')) return 'idle';
+  if (has('happy')) return 'happy';
   return SPRITE_STATES.find((s) => s !== 'dormant' && has(s)) || '';
 }
 
@@ -1350,36 +1400,39 @@ function closeSettings() {
 window.openSettings = openSettings;
 
 /** Cambia la lingua dell'interfaccia; la lingua di ascolto/voce la segue. */
+const LANG_VOICE = { it: 'it-IT', en: 'en-US', pl: 'pl-PL' };
+
 function setUiLang(l) {
-  const wasEn = cfg.uiLang === 'en';
-  cfg.uiLang = l === 'en' ? 'en' : 'it';
-  if (/^(it|en)/.test(cfg.lang)) cfg.lang = cfg.uiLang === 'en' ? (wasEn ? cfg.lang : 'en-US') : 'it-IT';
+  const from = cfg.uiLang;
+  cfg.uiLang = I18N.LANGS.includes(l) ? l : 'it';
+  if (from === cfg.uiLang) return;
+  // ascolto e voce seguono la lingua (se erano su una delle tre lingue dell'app)
+  if (!cfg.lang || /^(it|en|pl)/.test(cfg.lang)) cfg.lang = LANG_VOICE[cfg.uiLang];
   cfg.tts.voice = '';
-  save();
-  // tornando all'italiano serve ridisegnare tutto da zero: il DOM tradotto non si "ritraduce"
-  if (!wasEn || cfg.uiLang === 'en') {
+  try { localStorage.setItem('capri.cfg', JSON.stringify(cfg)); } catch (e) { /* niente */ }
+  try { if (N) { N.setUi(cfg.uiLang); N.setLang(cfg.lang); } } catch (e) { /* niente */ }
+  if (from === 'it') {
     I18N.set(cfg.uiLang);
-    try { if (N) { N.setUi(cfg.uiLang); N.setLang(cfg.lang); } } catch (e) { /* niente */ }
     I18N.walk(document.body);
     if (curTab) { renderTabs(); renderTab(); }
     refresh();
+    if (cfg.passive.on) applyPassive(false);
   } else {
-    try { localStorage.setItem('capri.cfg', JSON.stringify(cfg)); } catch (e) { /* niente */ }
+    // il DOM già tradotto non si "ritraduce": ricarico la pagina
     location.reload();
   }
-  if (cfg.passive.on) applyPassive(false);
 }
 window.setUiLang = setUiLang;
 
 function renderTabs() {
   $('tabs').innerHTML =
     TABS.map(([id, l]) => `<button type="button" data-t="${id}" class="${id === curTab ? 'on' : ''}">${l}</button>`).join('') +
-    `<button type="button" class="lang" data-t="__lang" data-noi18n aria-label="Lingua / Language">${cfg.uiLang === 'en' ? 'EN' : 'IT'} ⇄</button>` +
+    `<button type="button" class="lang" data-t="__lang" data-noi18n aria-label="Lingua / Language">${cfg.uiLang.toUpperCase()} ⇄</button>` +
     '<button type="button" class="x" data-t="__close">CHIUDI</button>';
   $('tabs').querySelectorAll('button').forEach((b) => {
     b.onclick = () => {
       if (b.dataset.t === '__close') return closeSettings();
-      if (b.dataset.t === '__lang') return setUiLang(cfg.uiLang === 'en' ? 'it' : 'en');
+      if (b.dataset.t === '__lang') return setUiLang(I18N.LANGS[(I18N.LANGS.indexOf(cfg.uiLang) + 1) % I18N.LANGS.length]);
       curTab = b.dataset.t;
       renderTabs();
       renderTab();
@@ -1428,7 +1481,7 @@ function renderTab() {
   const P = $('panel');
   let h = '';
   if (curTab === 'ai') {
-    h += `<h3>00 // LINGUA · LANGUAGE</h3><div class="row" data-noi18n><button type="button" class="btn ${cfg.uiLang === 'it' ? 'p' : ''}" data-ui="it">Italiano</button><button type="button" class="btn ${cfg.uiLang === 'en' ? 'p' : ''}" data-ui="en">English</button></div>`;
+    h += `<h3>00 // LINGUA · LANGUAGE · JĘZYK</h3><div class="row" data-noi18n><button type="button" class="btn ${cfg.uiLang === 'it' ? 'p' : ''}" data-ui="it">Italiano</button><button type="button" class="btn ${cfg.uiLang === 'en' ? 'p' : ''}" data-ui="en">English</button><button type="button" class="btn ${cfg.uiLang === 'pl' ? 'p' : ''}" data-ui="pl">Polski</button></div>`;
     h += `<h3>01 // ORDINE PROVIDER</h3>`;
     h += cfg.order.map((p, i) => `<div class="item"><span class="grow">${i + 1}. ${{ local: 'PC in LAN (Ollama / LM Studio)', gemini: 'Gemini multi-key', extra: 'Altri provider free (Groq, Cerebras…)', openrouter: 'OpenRouter :free' }[p]}</span><button type="button" data-mv="${i}" data-d="-1" aria-label="Su">↑</button><button type="button" data-mv="${i}" data-d="1" aria-label="Giù">↓</button></div>`).join('');
     h += `<h3>02 // PC IN LAN</h3>` + tog('Usa il PC come cervello', 'local.enabled');
@@ -1464,7 +1517,7 @@ function renderTab() {
   if (curTab === 'strumenti') {
     const st = perms();
     const chip = (ok, l) => `<span class="chip ${ok ? 'ok' : 'err'}">${l}: ${ok ? 'OK' : 'NO'}</span>`;
-    h += `<h3>15 // AZIONI SUL TELEFONO</h3>` + tog('Strumenti attivi', 'tools.on') + tog('Apri app (“apri Instagram”)', 'tools.apps') + tog('Ricerca web e risposta (“chi ha vinto ieri?”)', 'tools.web') + tog('Leggi lo schermo (“cosa c’è scritto qui?”)', 'tools.screen') + tog('Chiamate e WhatsApp (“chiama Marco”)', 'tools.calls');
+    h += `<h3>15 // AZIONI SUL TELEFONO</h3>` + tog('Strumenti attivi', 'tools.on') + tog('Apri app (“apri Instagram”)', 'tools.apps') + tog('Ricerca web e risposta (“chi ha vinto ieri?”)', 'tools.web') + tog('Leggi lo schermo (“cosa c’è scritto qui?”)', 'tools.screen') + tog('Chiamate e WhatsApp (“chiama Marco”)', 'tools.calls') + tog('WhatsApp: premi Invia da sola (serve la lettura schermo)', 'tools.waAuto');
     h += `<p class="note">YouTube (“cerca … su YouTube”) e Google (“cercami … su Google”) sono sempre disponibili.</p>`;
     h += `<h3>16 // PERMESSI</h3><div class="row">${chip(st.mic, 'Microfono')}${chip(st.contacts, 'Contatti')}${chip(st.call, 'Chiamate')}${chip(st.overlay, 'Bolla')}${chip(st.a11y, 'Lettura schermo')}</div>`;
     h += `<div class="row"><button type="button" class="btn p" id="pAll">Concedi microfono, contatti, chiamate</button></div>`;
@@ -1489,11 +1542,11 @@ function renderTab() {
   }
   if (curTab === 'sprite') {
     h += `<h3>08 // SPRITE PER STATO</h3><p class="note">Più frame = animazione in loop. Anche GIF e clip video (mp4/webm). <b>dormant</b> = sigillo piccolo, <b>talk</b> = bocca da chiusa ad aperta, <b>blink</b> = occhi chiusi.</p>`;
-    h += SPRITE_STATES.map((s) => `<div class="sprow"><div class="h"><span>${s} · ${(sprites[s] || []).length}</span><button type="button" class="btn" data-imp="${s}">+ Importa</button></div><div class="thumbs">${(sprites[s] || []).map((it) => `<button type="button" data-dels="${it.id}" aria-label="Rimuovi frame">${it.video ? `<video src="${it.url}" muted></video>` : `<img src="${it.url}" alt="">`}</button>`).join('')}</div></div>`).join('');
+    h += SPRITE_STATES.map((s) => `<div class="sprow"><div class="h"><span>${s} · ${(sprites[s] || []).length}</span><button type="button" class="btn" data-imp="${s}">+ Importa</button></div><div class="thumbs">${(sprites[s] || []).map((it) => `<button type="button" data-dels="${it.id}" aria-label="${it.def ? 'Predefinita' : 'Rimuovi frame'}" ${it.def ? 'disabled title="Predefinita"' : ''}>${it.video ? `<video src="${it.url}" muted></video>` : `<img src="${it.url}" alt="">`}</button>`).join('')}</div></div>`).join('');
   }
   if (curTab === 'voce') {
     h += `<h3>09 // VOCE</h3>` + tog('Parla ad alta voce', 'tts.on');
-    h += sel('Lingua (ascolto e voce)', 'lang', [['it-IT', 'Italiano'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['ja-JP', '日本語']]);
+    h += sel('Lingua (ascolto e voce)', 'lang', [['it-IT', 'Italiano'], ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['pl-PL', 'Polski'], ['ja-JP', '日本語']]);
     h += `<div class="grid2">${fld('Tono (pitch)', 'tts.pitch', { type: 'number' })}${fld('Velocità', 'tts.rate', { type: 'number' })}</div>`;
     const voices = N ? JSON.parse(N.voices(cfg.lang.slice(0, 2)) || '[]') : [];
     h += sel('Voce', 'tts.voice', [['', 'Predefinita'], ...voices.map((v) => [v, v])]);
@@ -1598,7 +1651,7 @@ function bindTab(P) {
   });
   on('[data-pers]', (el) => { cfg.personality = el.dataset.pers; save(); renderTab(); });
   on('[data-imp]', (el) => { spriteTarget = el.dataset.imp; $('pickSprite').click(); });
-  on('[data-dels]', (el) => delSprite(+el.dataset.dels).then(renderTab));
+  on('[data-dels]', (el) => delSprite(/^\d+$/.test(el.dataset.dels) ? +el.dataset.dels : el.dataset.dels).then(renderTab));
   on('#testVoice', () => speak(`${T('Ciao, sono')} ${cfg.name}. ${T('Sistemi neurali online, choom.')}`));
   on('#mPlay', () => { const q = $('mq').value.trim(); if (q) { music('play', q); ex.np = q; } });
   on('[data-mc]', (el) => music(el.dataset.mc));
@@ -1617,6 +1670,10 @@ $('pickSprite').onchange = async (e) => {
   renderTab();
 };
 window.__bubble = (ok) => N && N.toast(T(ok ? 'Bolla attiva' : 'Permesso negato'));
+window.__waSent = (ok) => {
+  log(ok ? 'ok' : 'warn', 'azioni', ok ? 'WhatsApp: messaggio inviato' : 'WhatsApp: pulsante Invia non trovato');
+  if (ok) bubbleSay(T('Messaggio inviato, choom.'));
+};
 window.__perms = () => {
   if (curTab === 'strumenti') renderTab();
 };

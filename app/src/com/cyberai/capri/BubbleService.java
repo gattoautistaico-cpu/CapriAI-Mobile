@@ -9,7 +9,10 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Movie;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -54,13 +57,103 @@ public class BubbleService extends Service {
     String localLabel = null; // etichetta locale durante l'ascolto dalla bolla
     String partial = "";
 
-    static final int SIG_W = 150, SIG_H = 130, PANEL_W = 300;
+    static final int SIG_W = 150, SIG_H = 130, PANEL_W = 300, SPR_H = 168;
+
+    // ------------------------------------------------------------ popup GIF (come la finestra di Capri su PC)
+    static volatile String mood = "happy";
+    static boolean spritesOn = true;
+    final java.util.HashMap<String, java.util.ArrayList<Object>> spr = new java.util.HashMap<String, java.util.ArrayList<Object>>();
+    long sprStart = System.currentTimeMillis();
+
+    static java.io.File spriteDir(Context c) {
+        java.io.File d = new java.io.File(c.getFilesDir(), "sprites");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    static void setMood(String m) {
+        mood = m == null || m.isEmpty() ? "happy" : m;
+        final BubbleService s = self;
+        if (s != null) s.ui.post(new Runnable() { public void run() { s.relayout(); } });
+    }
+
+    /** Gli sprite sono cambiati nell'app: svuota la cache (verranno ricaricati dai file). */
+    static void spritesChanged() {
+        final BubbleService s = self;
+        if (s != null) s.ui.post(new Runnable() { public void run() { s.spr.clear(); s.relayout(); } });
+    }
+
+    static Object decode(byte[] b) {
+        if (b == null || b.length == 0) return null;
+        try {
+            Movie m = Movie.decodeByteArray(b, 0, b.length);
+            if (m != null && m.duration() > 0 && m.width() > 0) return m;
+        } catch (Throwable ignored) {
+        }
+        try {
+            return BitmapFactory.decodeByteArray(b, 0, b.length);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    static byte[] readAll(java.io.InputStream in) throws java.io.IOException {
+        java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[16384];
+        int n;
+        while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+        in.close();
+        return o.toByteArray();
+    }
+
+    /** Frame dello stato: file importati dall'utente, altrimenti le GIF predefinite negli assets. */
+    java.util.ArrayList<Object> frames(String state) {
+        java.util.ArrayList<Object> l = spr.get(state);
+        if (l != null) return l;
+        l = new java.util.ArrayList<Object>();
+        java.io.File[] fs = spriteDir(this).listFiles();
+        if (fs != null) {
+            java.util.Arrays.sort(fs);
+            for (java.io.File f : fs) {
+                if (!f.getName().startsWith(state + "_")) continue;
+                try {
+                    Object o = decode(readAll(new java.io.FileInputStream(f)));
+                    if (o != null) l.add(o);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        if (l.isEmpty()) {
+            try {
+                Object o = decode(readAll(getAssets().open("web/default/" + state + ".gif")));
+                if (o != null) l.add(o);
+            } catch (Throwable ignored) {
+            }
+        }
+        spr.put(state, l);
+        return l;
+    }
+
+    /** Stato da mostrare nel popup, o null se il popup va nascosto. */
+    String spriteState() {
+        if (!spritesOn || sayText.isEmpty() || localLabel != null) return null;
+        if (label.contains("THINKING") || sayText.startsWith("decrypting") || sayText.startsWith("searching")) {
+            return frames("think").isEmpty() ? null : "think";
+        }
+        String[] chain = speaking ? new String[] { "talk", mood, "happy", "idle" } : new String[] { mood, "happy", "idle", "talk" };
+        for (String st : chain) if (st != null && !frames(st).isEmpty()) return st;
+        return null;
+    }
+
+    int spriteH() {
+        return spriteState() != null ? dp(SPR_H) : 0;
+    }
 
     // ------------------------------------------------------------ assistente passivo
     static volatile boolean passiveWanted = false;
     static String wakeWords = "hey capri";
-    static boolean en = false;
-    static String L(String it, String eng) { return en ? eng : it; }
+    static String uiLang = "it";
+    static String L(String it, String eng, String pl) { return "en".equals(uiLang) ? eng : "pl".equals(uiLang) ? pl : it; }
     static String greeting = "";
     static volatile boolean speaking = false;
     static volatile boolean muteBeep = true;
@@ -276,12 +369,19 @@ public class BubbleService extends Service {
     };
 
     /** Macchina da scrivere + auto-chiusura del fumetto. */
+    boolean lastSprVisible = false;
+
     final Runnable typer = new Runnable() {
         public void run() {
             if (view == null) return;
             if (shown < sayText.length()) {
                 shown = Math.min(sayText.length(), shown + 2);
                 view.invalidate();
+            }
+            boolean sv = spriteState() != null;
+            if (sv != lastSprVisible) {
+                lastSprVisible = sv;
+                relayout();
             }
             long life = 9000 + sayText.length() * 60L;
             if (!sayText.isEmpty() && localLabel == null && System.currentTimeMillis() - sayAt > life && !label.contains("TALKING") && !label.contains("THINKING")) {
@@ -311,7 +411,7 @@ public class BubbleService extends Service {
         mode = "command";
         localLabel = sayName.toUpperCase() + " // LISTENING";
         sayUser = "";
-        sayText = L("ti ascolto…", "listening…");
+        sayText = L("ti ascolto…", "listening…", "słucham…");
         shown = sayText.length();
         sayAt = System.currentTimeMillis();
         relayout();
@@ -344,10 +444,10 @@ public class BubbleService extends Service {
         } else if ("error".equals(ev)) {
             localLabel = null;
             String msg;
-            if ("7".equals(v) || "6".equals(v) || "timeout".equals(v)) msg = L("non ho sentito niente, choom. tocca e riprova.", "didn't hear a thing, choom. tap and try again.");
-            else if ("unavailable".equals(v)) msg = L("riconoscimento vocale non disponibile: installa o aggiorna l'app Google.", "speech recognition unavailable: install or update the Google app.");
-            else if ("9".equals(v)) msg = L("mi manca il permesso del microfono: apri l'app.", "microphone permission missing: open the app.");
-            else msg = L("errore microfono (", "microphone error (") + v + L("). tocca e riprova.", "). tap and try again.");
+            if ("7".equals(v) || "6".equals(v) || "timeout".equals(v)) msg = L("non ho sentito niente, choom. tocca e riprova.", "didn't hear a thing, choom. tap and try again.", "nic nie usłyszałam, choom. dotknij i spróbuj ponownie.");
+            else if ("unavailable".equals(v)) msg = L("riconoscimento vocale non disponibile: installa o aggiorna l'app Google.", "speech recognition unavailable: install or update the Google app.", "rozpoznawanie mowy niedostępne: zainstaluj lub zaktualizuj aplikację Google.");
+            else if ("9".equals(v)) msg = L("mi manca il permesso del microfono: apri l'app.", "microphone permission missing: open the app.", "brak uprawnienia do mikrofonu: otwórz aplikację.");
+            else msg = L("errore microfono (", "microphone error (", "błąd mikrofonu (") + v + L("). tocca e riprova.", "). tap and try again.", "). dotknij i spróbuj ponownie.");
             sayUser = "";
             sayText = msg;
             shown = 0;
@@ -381,7 +481,7 @@ public class BubbleService extends Service {
             if (fatal) {
                 passive = false;
                 sayUser = "";
-                sayText = L("modalità passiva sospesa: riconoscimento vocale non disponibile.", "passive mode paused: speech recognition unavailable.");
+                sayText = L("modalità passiva sospesa: riconoscimento vocale non disponibile.", "passive mode paused: speech recognition unavailable.", "tryb pasywny wstrzymany: rozpoznawanie mowy niedostępne.");
                 shown = 0;
                 sayAt = System.currentTimeMillis();
                 relayout();
@@ -402,7 +502,7 @@ public class BubbleService extends Service {
             sendToBrain(cmd);
             return;
         }
-        String g = greeting == null || greeting.isEmpty() ? L("Dimmi, choom. Di cosa hai bisogno?", "Talk to me, choom. What do you need?") : greeting;
+        String g = greeting == null || greeting.isEmpty() ? L("Dimmi, choom. Di cosa hai bisogno?", "Talk to me, choom. What do you need?", "Mów, choom. Czego potrzebujesz?") : greeting;
         sayUser = "";
         sayText = g;
         shown = 0;
@@ -430,7 +530,7 @@ public class BubbleService extends Service {
             try {
                 startActivity(i);
             } catch (Throwable t) {
-                sayText = L("non riesco a svegliare l'app: aprila una volta.", "can't wake the app: open it once.");
+                sayText = L("non riesco a svegliare l'app: aprila una volta.", "can't wake the app: open it once.", "nie mogę obudzić aplikacji: otwórz ją raz.");
                 shown = 0;
                 relayout();
             }
@@ -464,7 +564,8 @@ public class BubbleService extends Service {
 
     void applyLayout() {
         int w = panelVisible() ? dp(PANEL_W) : dp(SIG_W);
-        int ph = panelHeight();
+        int sh = spriteH();
+        int ph = panelHeight() + sh;
         int h = dp(SIG_H) + ph;
         int sw = getResources().getDisplayMetrics().widthPixels;
         int shh = getResources().getDisplayMetrics().heightPixels;
@@ -504,7 +605,7 @@ public class BubbleService extends Service {
         Intent i = new Intent(this, MainActivity.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, i, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return b.setContentTitle("Capri online")
-                .setContentText(passiveWanted ? L("In ascolto della parola di attivazione", "Listening for the wake word") : L("Tocca = parla · doppio tocco = apri · tieni premuto = chiudi", "Tap = talk · double tap = open · long press = close"))
+                .setContentText(passiveWanted ? L("In ascolto della parola di attivazione", "Listening for the wake word", "Nasłuchuję słowa aktywującego") : L("Tocca = parla · doppio tocco = apri · tieni premuto = chiudi", "Tap = talk · double tap = open · long press = close", "Dotknij = mów · podwójne dotknięcie = otwórz · przytrzymaj = zamknij"))
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentIntent(pi)
                 .setOngoing(true)
@@ -555,6 +656,69 @@ public class BubbleService extends Service {
             return new StaticLayout(s, tp, Math.max(10, w), Layout.Alignment.ALIGN_NORMAL, 1.1f, 0, false);
         }
 
+        final Paint bp = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
+        /** Popup con la GIF dello stato (talk mentre parla, mood dopo), cornice glitch stile Capri. */
+        void drawSprite(Canvas cv, String state, float W, float h) {
+            float left = dp(4), top = dp(2), right = W - dp(4), bottom = h - dp(6);
+            float k = dp(12);
+            Path box = new Path();
+            box.moveTo(left + k, top);
+            box.lineTo(right, top);
+            box.lineTo(right, bottom - k);
+            box.lineTo(right - k, bottom);
+            box.lineTo(left, bottom);
+            box.lineTo(left, top + k);
+            box.close();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(Color.argb(250, 5, 5, 10));
+            cv.drawPath(box, p);
+            java.util.ArrayList<Object> fr = frames(state);
+            if (!fr.isEmpty()) {
+                long t = System.currentTimeMillis() - sprStart;
+                Object o = fr.size() == 1 ? fr.get(0) : fr.get((int) ((t / 125) % fr.size()));
+                float iw, ih;
+                if (o instanceof Movie) { iw = ((Movie) o).width(); ih = ((Movie) o).height(); }
+                else { iw = ((Bitmap) o).getWidth(); ih = ((Bitmap) o).getHeight(); }
+                float bw = right - left - dp(4), bh = bottom - top - dp(4);
+                float sc = Math.min(bw / iw, bh / ih);
+                float dw = iw * sc, dh = ih * sc;
+                float x = left + dp(2) + (bw - dw) / 2, y = top + dp(2) + (bh - dh) / 2;
+                cv.save();
+                cv.clipPath(box);
+                if (o instanceof Movie) {
+                    Movie m = (Movie) o;
+                    m.setTime((int) (t % Math.max(1, m.duration())));
+                    cv.translate(x, y);
+                    cv.scale(sc, sc);
+                    m.draw(cv, 0, 0, bp);
+                } else {
+                    cv.drawBitmap((Bitmap) o, null, new RectF(x, y, x + dw, y + dh), bp);
+                }
+                cv.restore();
+                // scanline glitch leggero
+                if ((t / 90) % 23 == 0) {
+                    p.setColor(Color.argb(90, 255, 31, 75));
+                    float gy = top + (t % 997) / 997f * (bottom - top);
+                    cv.drawRect(left, gy, right, gy + dp(3), p);
+                }
+            }
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(2 * d);
+            p.setColor(speaking ? Color.rgb(252, 238, 10) : Color.rgb(255, 46, 136));
+            cv.drawPath(box, p);
+            p.setStyle(Paint.Style.FILL);
+            tp.setTextSize(9 * d);
+            tp.setFakeBoldText(true);
+            tp.setColor(Color.rgb(252, 238, 10));
+            String tag = sayName.toUpperCase() + " // " + state.toUpperCase();
+            float tw = tp.measureText(tag);
+            p.setColor(Color.argb(230, 5, 5, 10));
+            cv.drawRect(right - tw - dp(14), bottom - dp(16), right - k, bottom - dp(2), p);
+            cv.drawText(tag, right - tw - dp(10), bottom - dp(5), tp);
+            tp.setFakeBoldText(false);
+        }
+
         int panelHeight(int w) {
             int h = dp(16);
             if (!sayUser.isEmpty()) h += layout("> you: " + sayUser, w, 11, 0, true).getHeight() + dp(4);
@@ -571,6 +735,11 @@ public class BubbleService extends Service {
             if (localLabel == null && "wake".equals(mode)) lab = lab + " ·";
             if (localLabel != null) col = Color.rgb(0, 240, 255);
             float W = getWidth();
+            String sst = spriteState();
+            float sh = sst != null ? dp(SPR_H) : 0;
+            if (sh > 0) drawSprite(cv, sst, W, sh);
+            cv.save();
+            cv.translate(0, sh);
             float ph = panelVisible() ? panelHeight(dp(PANEL_W) - dp(28)) : 0;
 
             // ---------- fumetto terminale
@@ -632,6 +801,9 @@ public class BubbleService extends Service {
                 float textH = Math.min(t.getHeight(), dp(150));
                 cv.drawRect(x, barTop, x + dp(3), y + textH, p);
             }
+
+            cv.restore();
+            ph += sh;
 
             // ---------- sigillo
             float cx = sigilCx > 0 ? sigilCx : W / 2, cy = ph + dp(46), r = dp(34);

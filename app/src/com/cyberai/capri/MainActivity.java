@@ -182,6 +182,8 @@ public class MainActivity extends Activity {
         if (p.endsWith(".js")) return "application/javascript";
         if (p.endsWith(".css")) return "text/css";
         if (p.endsWith(".png")) return "image/png";
+        if (p.endsWith(".gif")) return "image/gif";
+        if (p.endsWith(".webp")) return "image/webp";
         if (p.endsWith(".svg")) return "image/svg+xml";
         if (p.endsWith(".woff2")) return "font/woff2";
         if (p.endsWith(".json")) return "application/json";
@@ -202,7 +204,7 @@ public class MainActivity extends Activity {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(i);
         } catch (Exception e) {
-            toast((BubbleService.en ? "No app for: " : "Nessuna app per: ") + url);
+            toast(BubbleService.L("Nessuna app per: ", "No app for: ", "Brak aplikacji dla: ") + url);
         }
     }
 
@@ -408,7 +410,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void setUi(String ui) {
-            BubbleService.en = ui != null && ui.startsWith("en");
+            BubbleService.uiLang = ui == null ? "it" : ui;
         }
 
         @JavascriptInterface
@@ -508,6 +510,42 @@ public class MainActivity extends Activity {
             BubbleService.setState(label, color);
         }
 
+        /** Mood dell'ultima risposta: sceglie la GIF del popup nella bolla. */
+        @JavascriptInterface
+        public void bubbleMood(String mood) {
+            BubbleService.setMood(mood);
+        }
+
+        @JavascriptInterface
+        public void bubbleSprites(boolean on) {
+            BubbleService.spritesOn = on;
+            BubbleService.spritesChanged();
+        }
+
+        /** Cancella gli sprite copiati per la bolla (l'app li riscrive con spritePut). */
+        @JavascriptInterface
+        public void spriteReset() {
+            java.io.File[] fs = BubbleService.spriteDir(MainActivity.this).listFiles();
+            if (fs != null) for (java.io.File f : fs) f.delete();
+            BubbleService.spritesChanged();
+        }
+
+        @JavascriptInterface
+        public void spritePut(String state, int idx, String ext, String b64) {
+            try {
+                String st = state.replaceAll("[^a-z0-9_-]", "");
+                String ex = ext.replaceAll("[^a-z0-9]", "");
+                byte[] data = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+                java.io.File f = new java.io.File(BubbleService.spriteDir(MainActivity.this), st + "_" + (1000 + idx) + "." + ex);
+                java.io.FileOutputStream o = new java.io.FileOutputStream(f);
+                o.write(data);
+                o.close();
+            } catch (Throwable t) {
+                android.util.Log.w("capri", "spritePut " + t);
+            }
+            BubbleService.spritesChanged();
+        }
+
         // ------------------------------------------------------------ strumenti telefono
 
         @JavascriptInterface
@@ -553,6 +591,11 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String waSend(String number, String text, boolean autoSend) {
+            return Tools.whatsappChat(MainActivity.this, number, text, autoSend);
+        }
+
+        @JavascriptInterface
         public String screenText() {
             String t = ScreenReader.readScreen();
             return t == null ? "" : t;
@@ -573,7 +616,7 @@ public class MainActivity extends Activity {
                     Intent i = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(i);
-                } catch (Throwable t) { MainActivity.this.toast((BubbleService.en ? "Open Settings > Accessibility > Capri AI" : "Apri Impostazioni > Accessibilità > Capri AI")); }
+                } catch (Throwable t) { MainActivity.this.toast(BubbleService.L("Apri Impostazioni > Accessibilità > Capri AI", "Open Settings > Accessibility > Capri AI", "Otwórz Ustawienia > Ułatwienia dostępu > Capri AI")); }
             }});
         }
 

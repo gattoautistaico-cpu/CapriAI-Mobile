@@ -211,7 +211,8 @@ public class Tools {
             try {
                 Intent i = new Intent(Intent.ACTION_VIEW);
                 i.setDataAndType(Uri.parse("content://com.android.contacts/data/" + dataId), "vnd.android.cursor.item/vnd.com.whatsapp.voip.call");
-                i.setPackage("com.whatsapp");
+                String pkg = waPackage(c);
+                if (!pkg.isEmpty()) i.setPackage(pkg);
                 start(c, i);
                 return "wa_call";
             } catch (Throwable ignored) {
@@ -220,17 +221,80 @@ public class Tools {
         return whatsappChat(c, number, "");
     }
 
+    /** Numero in formato internazionale senza "+" (es. 393331234567), usando il paese della SIM se manca il prefisso. */
+    static String waNumber(Context c, String number) {
+        String raw = number == null ? "" : number.replaceAll("[^0-9+]", "");
+        if (raw.startsWith("00")) raw = "+" + raw.substring(2);
+        if (!raw.startsWith("+")) {
+            String iso = "";
+            try {
+                android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE);
+                iso = tm.getSimCountryIso();
+                if (iso == null || iso.isEmpty()) iso = tm.getNetworkCountryIso();
+            } catch (Throwable ignored) {
+            }
+            if (iso == null || iso.isEmpty()) iso = Locale.getDefault().getCountry();
+            String e164 = null;
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= 21) e164 = android.telephony.PhoneNumberUtils.formatNumberToE164(raw, iso.toUpperCase(Locale.ROOT));
+            } catch (Throwable ignored) {
+            }
+            if (e164 != null && !e164.isEmpty()) raw = e164;
+            else if (raw.length() == 10 && raw.startsWith("3")) raw = "+39" + raw;       // cellulare italiano
+            else if (raw.length() == 9 && "pl".equalsIgnoreCase(iso)) raw = "+48" + raw; // cellulare polacco
+        }
+        return raw.replace("+", "");
+    }
+
+    /** Pacchetto WhatsApp installato (normale o Business), "" se nessuno. */
+    static String waPackage(Context c) {
+        if (installed(c, "com.whatsapp")) return "com.whatsapp";
+        if (installed(c, "com.whatsapp.w4b")) return "com.whatsapp.w4b";
+        return "";
+    }
+
+    /**
+     * Apre la chat WhatsApp con il messaggio già scritto. Con autoSend e il servizio di
+     * accessibilità attivo preme anche "Invia". Ritorna: sent | wa_chat | wa_web | "".
+     */
     static String whatsappChat(Context c, String number, String text) {
+        return whatsappChat(c, number, text, false);
+    }
+
+    static String whatsappChat(Context c, String number, String text, boolean autoSend) {
+        String n = waNumber(c, number);
+        String pkg = waPackage(c);
+        boolean hasText = text != null && !text.trim().isEmpty();
+        if (!pkg.isEmpty() && !n.isEmpty()) {
+            // 1) chat diretta con testo precompilato (jid): il metodo più affidabile
+            if (hasText) {
+                try {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("text/plain");
+                    i.putExtra(Intent.EXTRA_TEXT, text);
+                    i.putExtra("jid", n + "@s.whatsapp.net");
+                    i.setPackage(pkg);
+                    start(c, i);
+                    if (autoSend && ScreenReader.clickSendLater(pkg)) return "sent";
+                    return "wa_chat";
+                } catch (Throwable ignored) {
+                }
+            }
+            // 2) link api.whatsapp.com dentro l'app
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + n + (hasText ? "&text=" + Uri.encode(text) : "")));
+                i.setPackage(pkg);
+                start(c, i);
+                if (hasText && autoSend && ScreenReader.clickSendLater(pkg)) return "sent";
+                return "wa_chat";
+            } catch (Throwable ignored) {
+            }
+        }
+        // 3) browser (WhatsApp non installato o numero mancante)
         try {
-            String n = number == null ? "" : number.replaceAll("[^0-9+]", "");
-            if (n.startsWith("+")) n = n.substring(1);
-            else if (n.startsWith("00")) n = n.substring(2);
-            else if (n.length() == 10 && n.startsWith("3")) n = "39" + n; // cellulare italiano senza prefisso
-            String url = "https://wa.me/" + n + (text != null && !text.isEmpty() ? "?text=" + Uri.encode(text) : "");
-            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            if (installed(c, "com.whatsapp")) i.setPackage("com.whatsapp");
-            start(c, i);
-            return "wa_chat";
+            String url = "https://wa.me/" + n + (hasText ? "?text=" + Uri.encode(text) : "");
+            start(c, new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            return "wa_web";
         } catch (Throwable t) {
             return "";
         }

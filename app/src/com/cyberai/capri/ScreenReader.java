@@ -55,6 +55,45 @@ public class ScreenReader extends AccessibilityService {
         return self != null;
     }
 
+    /**
+     * Dopo aver aperto una chat WhatsApp con il testo pronto, cerca il pulsante "Invia"
+     * per ~7 s e lo preme. false se il servizio di accessibilità non è attivo.
+     */
+    static boolean clickSendLater(final String pkg) {
+        final ScreenReader s = self;
+        if (s == null) return false;
+        final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+        final long until = System.currentTimeMillis() + 7000;
+        h.postDelayed(new Runnable() {
+            public void run() {
+                boolean done = false;
+                try {
+                    AccessibilityNodeInfo root = s.getRootInActiveWindow();
+                    if (root != null && root.getPackageName() != null && root.getPackageName().toString().startsWith("com.whatsapp")) {
+                        java.util.List<AccessibilityNodeInfo> l = root.findAccessibilityNodeInfosByViewId(pkg + ":id/send");
+                        if ((l == null || l.isEmpty()) && !pkg.equals("com.whatsapp")) l = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send");
+                        if (l != null) for (AccessibilityNodeInfo n : l) {
+                            AccessibilityNodeInfo t = n;
+                            while (t != null && !t.isClickable()) t = t.getParent();
+                            if (t != null && t.isEnabled() && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) { done = true; break; }
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                if (done) {
+                    MainActivity a = MainActivity.instance;
+                    if (a != null) a.js("window.__waSent&&__waSent(true)");
+                } else if (System.currentTimeMillis() < until) {
+                    h.postDelayed(this, 400);
+                } else {
+                    MainActivity a = MainActivity.instance;
+                    if (a != null) a.js("window.__waSent&&__waSent(false)");
+                }
+            }
+        }, 900);
+        return true;
+    }
+
     /** Testo visibile della finestra attiva (escluse la bolla e Capri stessa), max ~8000 caratteri. */
     static String readScreen() {
         ScreenReader s = self;

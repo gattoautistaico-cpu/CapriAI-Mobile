@@ -17,7 +17,7 @@ tc/                          build senza Android SDK: mkapk.py (manifest binario
 Servono soltanto **git** e **JDK 17 o successivo**: niente Android SDK e niente Gradle.
 ```bash
 ./build-apk.sh            # -> app/CapriAI.apk (firmato)
-./build-apk.sh 400 0.4.0  # versionCode e versionName personalizzati
+./build-apk.sh 500 0.5.0  # versionCode e versionName personalizzati
 ```
 Su Windows lancialo da Git Bash.
 
@@ -34,14 +34,26 @@ Il keystore usa alias `app` e password `android`. **Non** caricare mai il file `
 - minSdk 24 (Android 7), targetSdk 29, firma v1.
 - La lettura dello schermo richiede di attivare il servizio di accessibilità. Su Android 13 e successivi bisogna prima consentire le "impostazioni con restrizioni" dalle Info app.
 
-## Lingua / Language
-L'app è in italiano e in inglese. Al primo avvio la lingua segue quella del telefono. Per cambiarla:
+## Novità 0.5.0
+- **Popup GIF nella bolla**: quando Capri risponde dalla bolla compare sopra il fumetto la GIF dello stato, come la finestra di Capri su PC: `talk` mentre parla, il mood della risposta dopo. Usa gli sprite importati (PNG, WebP, GIF; i video restano solo nell'app).
+- **GIF predefinite**: *Happy* e *Talking* (`assets/web/default/`). Se importi sprite per quegli stati, le sostituiscono.
+- **Gemini**: modello predefinito unico `gemini-3.5-flash`.
+- **WhatsApp**:
+  - il messaggio si apre direttamente nella chat del contatto, con il testo già scritto (WhatsApp normale o Business);
+  - il numero viene completato con il prefisso del paese della SIM;
+  - con la lettura schermo attiva Capri preme anche **Invia** (opzione in Strumenti).
+- **Polacco**: interfaccia, risposte, riconoscimento vocale (`pl-PL`) e voce.
+
+## Lingua / Language / Język
+L'app è in italiano, inglese e polacco. Al primo avvio la lingua segue quella del telefono. Per cambiarla:
 - **Impostazioni → AI → Lingua · Language**, oppure
-- il pulsante **IT/EN ⇄** nella barra delle schede.
+- il pulsante **IT/EN/PL ⇄** nella barra delle schede.
 
 Cambiano anche la lingua delle risposte, del riconoscimento vocale e della voce.
 
-The app is available in Italian and English. Switch it in **Settings → AI → Lingua · Language** or with the **IT/EN ⇄** button in the tab bar.
+The app is available in Italian, English and Polish. Switch it in **Settings → AI → Lingua · Language** or with the **IT/EN/PL ⇄** button in the tab bar.
+
+Aplikacja jest dostępna po włosku, angielsku i polsku: **Ustawienia → AI → Język** lub przycisk **IT/EN/PL ⇄**.
 
 ## Licenza
 Apache License 2.0: vedi [LICENSE](LICENSE) e [NOTICE](NOTICE). © 2026 gattoautistaico-cpu.

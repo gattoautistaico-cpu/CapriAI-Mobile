@@ -43,12 +43,5 @@ jobs:
           name: CapriAI-apk
           path: app/*.apk
 
-      - name: Release (solo tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: Capri AI ${{ github.ref_name }}
-          body: |
-            APK Android firmato. Installa CapriAI.apk sul telefono (consenti "origini sconosciute").
-            Signed Android APK. Install CapriAI.apk on your phone (allow "unknown sources").
-          files: app/*.apk
+      # La release con l'APK firmato con la chiave ufficiale si pubblica dal PC (release-*.bat):
+      # qui l'APK resta solo negli artifact, così non compare una seconda firma incompatibile.

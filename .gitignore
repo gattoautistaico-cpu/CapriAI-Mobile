@@ -1,0 +1,7 @@
+app/build/
+*.apk
+tc/android.jar
+tc/dxclasses/
+# chiave di firma: MAI su GitHub (va nei Secrets della repo)
+*.jks
+*.keystore

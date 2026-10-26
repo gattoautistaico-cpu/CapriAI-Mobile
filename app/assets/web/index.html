@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Capri</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="rain" aria-hidden="true"></canvas>
+
+<header id="hud">
+  <div class="slab">CYBER AI</div>
+  <div class="hudbar"><span id="hudProv">● OFFLINE</span><span id="hudNet"></span></div>
+  <button id="btnSettings" class="iconbtn" aria-label="Impostazioni">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>
+  </button>
+</header>
+
+<main id="stage" aria-label="Capri">
+  <!-- terminale a fumetto -->
+  <section id="term" class="hidden" aria-live="polite">
+    <div class="tbox"><div class="tin">
+      <div id="tUser" class="tmeta"></div>
+      <div id="tNp" class="tmeta"></div>
+      <div class="treply">
+        <div id="tName" class="tname">CAPRI &gt;</div>
+        <div id="tText" class="ttext"></div>
+      </div>
+      <form id="tForm" class="tform">
+        <label for="tInput" class="tyou">YOU &gt;</label>
+        <input id="tInput" autocomplete="off" placeholder="say something...">
+        <button type="button" id="btnImg" class="tbtn" aria-label="Invia un'immagine">IMG</button>
+        <button type="button" id="btnMic" class="tbtn mic" aria-label="Parla">●</button>
+      </form>
+    </div></div>
+    <div class="ttail" aria-hidden="true"><div></div></div>
+  </section>
+
+  <!-- finestra -->
+  <section id="frame" class="hidden">
+    <div id="fBox" class="fbox">
+      <div class="finner">
+        <div id="fMedia" class="fmedia"></div>
+        <div class="fscan" aria-hidden="true"></div>
+        <canvas id="fGlitch" class="glitch" aria-hidden="true"></canvas>
+      </div>
+      <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+    </div>
+    <div class="ftag"><span id="fTag" class="tag">CAPRI // ONLINE</span><span id="fBars" class="bars"></span></div>
+    <button id="btnSleep" class="sleepbtn" aria-label="Torna dormiente">▼</button>
+  </section>
+
+  <!-- sigillo -->
+  <section id="sigil">
+    <button id="sigilBtn" aria-label="Tocca per parlare">
+      <div id="sigilMedia"></div>
+    </button>
+    <div class="stag"><span id="sTag" class="tag">CAPRI // DORMANT</span><span id="sBars" class="bars"></span></div>
+  </section>
+
+  <div id="trans" class="hidden" aria-hidden="true"><div class="line"></div><canvas id="tGlitch" class="glitch"></canvas></div>
+</main>
+
+<!-- conferma chiamata -->
+<section id="confirm" class="hidden" role="alertdialog" aria-labelledby="cfText">
+  <div class="cfbox">
+    <div class="cftag">CALL // CONFIRM</div>
+    <div id="cfText" class="cftext"></div>
+    <div class="cfrow"><button type="button" id="cfNo" class="btn rd">Annulla</button><button type="button" id="cfYes" class="btn p">Chiama (<span id="cfCount">4</span>)</button></div>
+  </div>
+</section>
+
+<!-- impostazioni -->
+<section id="settings" class="hidden" aria-label="Impostazioni">
+  <nav id="tabs"></nav>
+  <div id="panel"></div>
+</section>
+
+<input type="file" id="pickImg" accept="image/*" hidden>
+<input type="file" id="pickSprite" accept="image/*,video/*" multiple hidden>
+<script src="app.js"></script>
+</body>
+</html>
